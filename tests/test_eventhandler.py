@@ -1,6 +1,6 @@
 import unittest
 
-from context import embrace
+from .context import embrace
 from embrace import eventhandler
 
 class DummyTestSuite(unittest.TestCase):
