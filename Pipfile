@@ -10,6 +10,7 @@ pytest = "*"
 mypy = "*"
 pytest-cov = "*"
 pytest-profiling = "*"
+snakeviz = "*"
 
 [requires]
 python_version = "3.7"
