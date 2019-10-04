@@ -9,6 +9,7 @@ name = "pypi"
 pytest = "*"
 mypy = "*"
 pytest-cov = "*"
+pytest-profiling = "*"
 
 [requires]
 python_version = "3.7"
