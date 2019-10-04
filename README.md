@@ -11,3 +11,7 @@ On a Debian based system:
 Use pipenv to install development depdencies
 
     pipenv install --dev
+
+Install pre-commit hooks
+
+    pipenv run pre-commit install
