@@ -22,4 +22,5 @@ repos:
     language: system
     entry: mypy
     types: [python]
-    exclude: ^docs/conf.py
+    exclude: ^docs/conf.py|^setup.py
+    args: ["--disallow-untyped-defs",]
