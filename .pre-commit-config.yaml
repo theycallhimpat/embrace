@@ -20,6 +20,6 @@ repos:
     name: mypy
     stages: [commit]
     language: system
-    entry: pipenv run mypy
+    entry: mypy
     types: [python]
-    pass_filenames: false
+    exclude: ^docs/conf.py
