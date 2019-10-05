@@ -5,7 +5,7 @@ from embrace import eventhandler
 
 
 class DummyTestSuite(unittest.TestCase):
-    def test_dummy(self):
+    def test_dummy(self) -> None:
         assert eventhandler.dummy(2, 3) == 5
 
 

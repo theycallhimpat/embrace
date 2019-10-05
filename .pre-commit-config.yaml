@@ -20,7 +20,7 @@ repos:
     name: mypy
     stages: [commit]
     language: system
-    entry: mypy
+    entry: pipenv run mypy
     types: [python]
     exclude: ^docs/conf.py|^setup.py
     args: ["--disallow-untyped-defs",]
