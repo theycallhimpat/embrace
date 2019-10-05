@@ -3,3 +3,6 @@ init:
 
 test:
 	pipenv run pytest
+
+black:
+	pipenv run black embrace/ tests/
