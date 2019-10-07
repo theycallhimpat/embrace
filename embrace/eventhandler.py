@@ -1,11 +1,13 @@
 def dummy(x: int, y: int) -> int:
     return x + y
 
+
 class Event:
     pass
 
+
 class EventHandler:
-    def __init__(self):
+    def __init__(self) -> None:
         pass
 
     def has_event(self) -> bool:
