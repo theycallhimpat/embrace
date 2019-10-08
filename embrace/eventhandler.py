@@ -1,3 +1,4 @@
+# vim: expandtab:tabstop=4:shiftwidth=4
 """ Event Handler classes used to efficiently wait for an event to occur """
 
 import asyncio
@@ -15,6 +16,13 @@ class Event:
         return self._event_id
 
 
+class MessageEvent:
+    """ A single Event for a received Message """
+
+    def __init__(self, event_id: int, message: bytes) -> None:
+        self._event_id = event_id
+        self._message = message
+
 class TimeoutException(Exception):
     """ Exception raised when a timeout occurs """
 
@@ -25,7 +33,7 @@ class EventHandler:
     """ Event sink, used by test agents to wait for events """
 
     def __init__(self) -> None:
-        self.queue: asyncio.Queue[Event] = asyncio.Queue()
+        self.queue: "asyncio.Queue[Event]" = asyncio.Queue()
 
     def has_event(self) -> bool:
         """ return True if at least one Event is queued """
@@ -55,3 +63,10 @@ class EventHandler:
         loop = asyncio.get_event_loop()
         result = loop.run_until_complete(self.async_wait_for_next_event(timeout))
         return result
+
+    # def assert_has_no_events
+    # def assert_has_events
+    # def assert_no_events_occur
+    # def num_events
+    # def to_string
+    # clear
