@@ -14,9 +14,7 @@ snakeviz = "*"
 pre-commit = "*"
 black = "==19.3b0"
 pylint = "*"
-
-[requires]
-python_version = "3.7"
+v = {editable = true,version = "*"}
 
 [pipenv]
 allow_prereleases = true

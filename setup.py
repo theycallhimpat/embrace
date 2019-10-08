@@ -9,6 +9,7 @@ with open("LICENSE") as f:
 
 setup(
     name="embrace",
+    python_requires='>=3.6',
     version="0.0.1",
     description="An agent-based python orchestration framework used to test, monitor, control or simulate networked systems",
     long_description=readme,
