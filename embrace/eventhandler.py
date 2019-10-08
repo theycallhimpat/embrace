@@ -39,7 +39,7 @@ class EventHandler:
         """ async waits for the next event to occur.
             If no event occurs within the timeout, raise TimeoutException.
             Otherwise return the Event """
-        task = asyncio.create_task(self.queue.get())
+        task = asyncio.ensure_future(self.queue.get())
         try:
             await asyncio.wait_for(task, timeout=timeout)
         except asyncio.TimeoutError:
