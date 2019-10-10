@@ -2,87 +2,75 @@
 """
 """
 import asyncio
+from typing import Tuple, Optional
 
+from embrace import endpoint
+from embrace.messagehandler import Message
 
-class UDPConnection:
+class UDPConnection(endpoint.EndPoint, asyncio.BaseProtocol):
     """ wrapper class to manage asyncio UDP comms with TX and RX queues """
 
-    def __init__(self, loop, local_addr, remote_addr):
-        self.loop = loop
+    def __init__(self, local_addr: Tuple[str, int], remote_addr: Tuple[str, int], loop: Optional[asyncio.AbstractEventLoop]=None):
+        endpoint.EndPoint.__init__(self, loop=loop)
         self.local_addr = local_addr
         self.remote_addr = remote_addr
-        self.rx_queue = asyncio.Queue(loop=loop)
-        self.tx_queue = asyncio.Queue(loop=loop)
-        self.connected = False
-        self.transport = None
+        self.transport: Optional[asyncio.DatagramTransport] = None
 
-        loop.create_task(self.transmit_loop())
-        loop.create_task(self.application_loop())
+    def start(self) -> None:
+        self.event_loop.create_task(self.transmit_loop())
+        self.event_loop.create_task(self.application_loop())
 
-        connect = loop.create_datagram_endpoint(
+        connect = self.event_loop.create_datagram_endpoint(
             lambda: self, local_addr=self.local_addr, remote_addr=self.remote_addr
         )
-        loop.create_task(connect)
+        self.event_loop.create_task(connect)
 
-    @asyncio.coroutine
-    def application_loop(self):
+    async def application_loop(self) -> None:
         """ TODO """
         while True:
-            yield from asyncio.sleep(2.0)
-            if self.connected:
-                yield from self.enqueue_message(b"TEST")
+            await asyncio.sleep(2.0)
+            await self.enqueue_message(Message(b"TEST"))
 
-    def connection_made(self, transport):
+    def connection_made(self, transport: asyncio.BaseTransport) -> None:
         """ called when the connection is established.
         Note: required for create_datagram_endpoint """
-        self.transport = transport
-        self.connected = True
+        self.transport = transport # type: ignore
 
-    @asyncio.coroutine
-    def enqueue_message(self, message):
+    async def enqueue_message(self, message: Message) -> None:
         """ Add a message to the transmit queue."""
-        yield from self.tx_queue.put(message)
-        print("Queuing: {}".format(message.hex()))
+        await self.tx_queue.put(message)
+        print("Queuing: {}".format(message.data.hex()))
 
-    @asyncio.coroutine
-    def transmit_loop(self):
+    async def transmit_loop(self) -> None:
         """ coroutine that waits for messages in the transmit queue and transmits
         them via the UDP socket """
 
         while True:
             try:
-                message = yield from self.tx_queue.get()
+                message = await self.tx_queue.get()
             except RuntimeError:
                 break
 
-            if self.connected:
-                print(self.remote_addr, "TX: {}".format(message.hex()))
+            if self.transport:
+                print(self.remote_addr, "TX: {}".format(message.data.hex()))
                 try:
                     self.transport.sendto(message)
                 except Exception as ex:
                     print(self.remote_addr, "***** failed to send msg: {}".format(ex))
 
-    def datagram_received(self, data, addr):
+    def datagram_received(self, data: bytes, addr: str) -> None:
         """ called when a UDP message is received.
         Note: required for create_datagram_endpoint """
         print(addr, "RX: {}".format(data.hex()))
-        self.loop.create_task(self.rx_queue.put(data))
+        self.event_loop.create_task(self.rx_queue.put(Message(data)))
 
-    def error_received(self, exc):
+    def error_received(self, exc: Exception) -> None:
         """ called when an error occurs
         Note: required for create_datagram_endpoint """
         print(self.remote_addr, "ERROR: {}".format(exc))
 
-    def connection_lost(self, exc):
+    def connection_lost(self, exc: Optional[Exception]) -> None:
         """ called when the connection is lost
         Note: required for create_datagram_endpoint """
         # pylint: disable=unused-argument
         self.transport = None
-
-
-if __name__ == "__main__":
-    loop = asyncio.get_event_loop()
-    u1 = UDPConnection(loop, ("127.0.0.1", 4444), ("127.0.0.1", 5555))
-    u2 = UDPConnection(loop, ("127.0.0.1", 5555), ("127.0.0.1", 4444))
-    print("doing it")
-    loop.run_forever()

@@ -1,7 +1,10 @@
 """ unit tests for embrace/eventhandler.py """
-import unittest
+import sys
+sys.path.append('..')
 
-from .context import embrace
+import unittest
+import threading
+
 from embrace import eventhandler
 
 # pylint: disable=missing-docstring,invalid-name,
@@ -32,10 +35,15 @@ class TestEventHandler(unittest.TestCase):
 
         with self.assertRaisesRegex(
             eventhandler.TimeoutException,
-            "Timed out waiting for next event after 0.005 seconds",
+            "Timed out after 0.005 seconds waiting for next event",
         ):
             handler.wait_for_next_event(timeout=0.005)
 
+    def test_wait_for_next_event_from_thread(self) -> None:
+        handler = eventhandler.EventHandler()
+        threading.Thread(target=handler.add_event_threadsafe, args=(eventhandler.Event(5),)).start()
+        event = handler.wait_for_next_event(timeout=0.025)
+        self.assertEqual(5, event.event_id)
 
 if __name__ == "__main__":
     unittest.main()

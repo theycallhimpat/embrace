@@ -2,6 +2,7 @@
 """ Event Handler classes used to efficiently wait for an event to occur """
 
 import asyncio
+from typing import Optional
 
 
 class Event:
@@ -32,7 +33,10 @@ class TimeoutException(Exception):
 class EventHandler:
     """ Event sink, used by test agents to wait for events """
 
-    def __init__(self) -> None:
+    def __init__(self, loop:Optional[asyncio.AbstractEventLoop]=None) -> None:
+        if loop is None:
+            loop = asyncio.get_event_loop()
+        self.loop = loop
         self.queue: "asyncio.Queue[Event]" = asyncio.Queue()
 
     def has_event(self) -> bool:
@@ -43,6 +47,14 @@ class EventHandler:
         """ adds an event to the back of the queue """
         self.queue.put_nowait(event)
 
+    def add_event_threadsafe(self, event: Event) -> None:
+        """ adds an event to the back of the queue, but which can be called by 
+            code running in a separate thread """
+        # TODO: mypy complains about using add_event and it might be because it's not
+        # a coroutine. But investigate further
+        #asyncio.run_coroutine_threadsafe(self.add_event(event), self.loop)
+        asyncio.run_coroutine_threadsafe(self.queue.put(event), self.loop)
+
     async def async_wait_for_next_event(self, timeout: float) -> Event:
         """ async waits for the next event to occur.
             If no event occurs within the timeout, raise TimeoutException.
@@ -52,16 +64,15 @@ class EventHandler:
             await asyncio.wait_for(task, timeout=timeout)
         except asyncio.TimeoutError:
             raise TimeoutException(
-                "Timed out waiting for next event after {} seconds".format(timeout)
-            )
+                "Timed out after {} seconds waiting for next event".format(timeout)
+            ) from None
         return task.result()
 
     def wait_for_next_event(self, timeout: float) -> Event:
         """ blocking / synchronous wait for the next event to occur.
             If no event occurs within the timeout, raise TimeoutException.
             Otherwise return the Event """
-        loop = asyncio.get_event_loop()
-        result = loop.run_until_complete(self.async_wait_for_next_event(timeout))
+        result = self.loop.run_until_complete(self.async_wait_for_next_event(timeout))
         return result
 
     # def assert_has_no_events
