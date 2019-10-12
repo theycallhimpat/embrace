@@ -1,0 +1,16 @@
+Must test the following interfaces:
+- TCP
+- UDP
+- Shell
+- Serial
+- SSH
+- HTTP
+- GUI interaction
+
+Must make creation of simulators simple
+
+Must simplify message decoding and encoding
+
+Must allow master / slave relationships whereby the slave is remote
+
+Must be thread safe, and be designed to make it difficult to break the thread safety
