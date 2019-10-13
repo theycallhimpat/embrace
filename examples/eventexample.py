@@ -1,16 +1,25 @@
 import sys
-sys.path.append('..')
 
-from embrace import eventhandler
+sys.path.append("..")
+import threading
+
+from embrace.eventhandler import AsyncEventHandler, ReceiveEvent
+
+
+def threadfunc(e: AsyncEventHandler, time_in_secs: float) -> None:
+    import time
+
+    time.sleep(time_in_secs)
+    e.add_event_threadsafe(ReceiveEvent(b"BANG"))
+
 
 if __name__ == "__main__":
-    e = eventhandler.EventHandler()
-    import threading
-    def threadfunc(e, time_in_secs):
-        import time
-        time.sleep(time_in_secs)
-        e.add_event('BANG!')
-    threading.Thread(target=threadfunc, args=(e,1.5)).start()
+    e = AsyncEventHandler()
+
+    print("+++ Expecting message within 2 seconds ...")
+    threading.Thread(target=threadfunc, args=(e, 1.5)).start()
     print(e.wait_for_next_event(2.0))
-    threading.Thread(target=threadfunc, args=(e,2.5)).start()
-    print(e.wait_for_next_event(2.0))
+
+    print("+++ Expecting message within 1 second (WILL FAIL) ...")
+    threading.Thread(target=threadfunc, args=(e, 1.5)).start()
+    print(e.wait_for_next_event(1.0))

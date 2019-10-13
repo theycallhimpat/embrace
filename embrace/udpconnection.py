@@ -7,23 +7,24 @@ from typing import Tuple, Optional
 from embrace import endpoint
 from embrace.messagehandler import Message
 
+
 class UDPConnection(endpoint.EndPoint, asyncio.BaseProtocol):
     """ wrapper class to manage asyncio UDP comms with TX and RX queues """
 
-    def __init__(self, local_addr: Tuple[str, int], remote_addr: Tuple[str, int], loop: Optional[asyncio.AbstractEventLoop]=None):
-        endpoint.EndPoint.__init__(self, loop=loop)
+    def __init__(self, local_addr: Tuple[str, int], remote_addr: Tuple[str, int]):
+        endpoint.EndPoint.__init__(self)
         self.local_addr = local_addr
         self.remote_addr = remote_addr
         self.transport: Optional[asyncio.DatagramTransport] = None
 
     def start(self) -> None:
-        self.event_loop.create_task(self.transmit_loop())
-        self.event_loop.create_task(self.application_loop())
+        asyncio.run_coroutine_threadsafe(self.transmit_loop(), self.comms_event_loop)
+        asyncio.run_coroutine_threadsafe(self.application_loop(), self.comms_event_loop)
 
-        connect = self.event_loop.create_datagram_endpoint(
+        connect = self.comms_event_loop.create_datagram_endpoint(
             lambda: self, local_addr=self.local_addr, remote_addr=self.remote_addr
         )
-        self.event_loop.create_task(connect)
+        asyncio.run_coroutine_threadsafe(connect, self.comms_event_loop)
 
     async def application_loop(self) -> None:
         """ TODO """
@@ -34,7 +35,7 @@ class UDPConnection(endpoint.EndPoint, asyncio.BaseProtocol):
     def connection_made(self, transport: asyncio.BaseTransport) -> None:
         """ called when the connection is established.
         Note: required for create_datagram_endpoint """
-        self.transport = transport # type: ignore
+        self.transport = transport  # type: ignore
 
     async def enqueue_message(self, message: Message) -> None:
         """ Add a message to the transmit queue."""
@@ -54,7 +55,7 @@ class UDPConnection(endpoint.EndPoint, asyncio.BaseProtocol):
             if self.transport:
                 print(self.remote_addr, "TX: {}".format(message.data.hex()))
                 try:
-                    self.transport.sendto(message)
+                    self.transport.sendto(message.data)
                 except Exception as ex:
                     print(self.remote_addr, "***** failed to send msg: {}".format(ex))
 
@@ -62,7 +63,8 @@ class UDPConnection(endpoint.EndPoint, asyncio.BaseProtocol):
         """ called when a UDP message is received.
         Note: required for create_datagram_endpoint """
         print(addr, "RX: {}".format(data.hex()))
-        self.event_loop.create_task(self.rx_queue.put(Message(data)))
+        # TODO: integrate into EventHandler
+        self.comms_event_loop.create_task(self.rx_queue.put(Message(data)))
 
     def error_received(self, exc: Exception) -> None:
         """ called when an error occurs

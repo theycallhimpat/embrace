@@ -24,3 +24,9 @@ repos:
     types: [python]
     exclude: ^docs/conf.py|^setup.py
     args: ["--disallow-untyped-defs",]
+  - id: pytest
+    name: pytest
+    stages: [commit]
+    language: system
+    entry: pipenv run pytest tests/
+    pass_filenames: false

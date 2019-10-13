@@ -6,23 +6,33 @@ import asyncio
 import concurrent.futures
 from typing import Generator, Optional
 
-from embrace import endpoint
+from embrace import endpoint, eventhandler
 from embrace.messagehandler import Message
 
 CONNECTION_FAILURE_TIMEOUT_SECONDS = 1.0
 
+
 class TCPConnection(endpoint.EndPoint):
-    def __init__(self, loop: Optional[asyncio.AbstractEventLoop]) -> None:
-        endpoint.EndPoint.__init__(self, loop=loop)
-        self.connected = False
+    def __init__(self) -> None:
+        endpoint.EndPoint.__init__(self)
+        self.__connected = False
         self.writer: Optional[asyncio.StreamWriter] = None
+
+    @property
+    def connected(self) -> bool:
+        """ return true if the socket is connected"""
+        return self.__connected
+
+    def assert_connected(self) -> None:
+        assert self.connected
+
+    def assert_disconnected(self) -> None:
+        assert not self.connected
 
     async def application_loop(self) -> None:
         """ TODO """
         while True:
-            await asyncio.sleep(2.0)
-            if self.connected:
-                self.enqueue_message(Message(b"TEST"))
+            await asyncio.sleep(1.0)
 
     async def transmit_loop(self) -> None:
         """Take messages from the transmit queue and send to the socket"""
@@ -50,7 +60,9 @@ class TCPConnection(endpoint.EndPoint):
 
     def enqueue_message(self, message: Message) -> None:
         """ Add a message to the transmit queue."""
-        asyncio.run_coroutine_threadsafe(self.tx_queue.put(message), self.event_loop)
+        asyncio.run_coroutine_threadsafe(
+            self.tx_queue.put(message), self.comms_event_loop
+        )
         print("Queuing: {}".format(message.data.hex()))
 
     async def receive_loop(self, reader: asyncio.StreamReader) -> None:
@@ -66,31 +78,43 @@ class TCPConnection(endpoint.EndPoint):
                 # if data is empty
                 continue
 
-            await self.rx_queue.put(Message(data))
+            self.on_bytes_receive(data)
+            # await self.rx_queue.put(Message(data))
             print("RX: {}: {}".format(data, data.hex()))
 
     def on_connect(self) -> None:
-        self.connected = True
+        self.add_event_threadsafe(eventhandler.ConnectionEvent())
+        self.__connected = True
 
     def on_disconnect(self) -> None:
-        self.connected = False
-    
+        self.add_event_threadsafe(eventhandler.DisconnectionEvent())
+        self.__connected = False
+
+    def on_connect_fail(self) -> None:
+        self.add_event_threadsafe(eventhandler.ConnectionFailedEvent())
+        self.__connected = False
+
     def on_bytes_receive(self, data: bytes) -> None:
-        pass
+        self.add_event_threadsafe(eventhandler.ReceiveEvent(data))
 
     def on_message_transmit(self, message: Message) -> None:
         pass
 
+
 class TCPClient(TCPConnection):
     """ Manages a TCP connection to a single server"""
 
-    def __init__(self, ip_address: str, port: int, loop: Optional[asyncio.AbstractEventLoop]=None) -> None:
-        TCPConnection.__init__(self, loop=loop)
+    def __init__(self, ip_address: str, port: int) -> None:
+        TCPConnection.__init__(self)
         self.ip_address = ip_address
         self.port = port
 
-    def connect(self) -> None:
-        self.event_loop.create_task(self.connect_loop())
+    def start_connection(self) -> None:
+        asyncio.run_coroutine_threadsafe(self.connect_loop(), self.comms_event_loop)
+
+    def connect(self, timeout: float) -> None:
+        self.start_connection()
+        self.assert_event(eventhandler.EventType.CONNECT, timeout=timeout)
 
     async def connect_loop(self) -> None:
         """Loop forever, invoking handle_single_connection, catching all Exceptions and sleeping between attempts."""
@@ -99,19 +123,19 @@ class TCPClient(TCPConnection):
                 await self.handle_single_connection()
             except ConnectionRefusedError as ex:
                 print("Connection refused: {}".format(ex))
+                self.on_connect_fail()
             except OSError as ex:
                 print("Connection error: {}".format(ex))
+                self.on_connect_fail()
             except Exception as ex:
                 print("***** Unknown exception: {}".format(ex))
-
-            if self.connected:
-                self.connected = False
+                self.on_connect_fail()
 
             await asyncio.sleep(CONNECTION_FAILURE_TIMEOUT_SECONDS)
 
     async def handle_single_connection(self) -> None:
         """Attempt to establish a connection with the server, then spawns new
-        coroutines for handling socket communication: 
+        coroutines for handling socket communication:
         - a receiver that receives data, and passes it upstream
         - a transmitter than send data on
         As all of these coroutines loop until the connection is terminated, this
@@ -121,10 +145,9 @@ class TCPClient(TCPConnection):
         print("Opening connection...")
         # exceptions handled in calling function
         reader, writer = await asyncio.open_connection(
-            self.ip_address, self.port, loop=self.event_loop
+            self.ip_address, self.port, loop=self.comms_event_loop
         )
         self.writer = writer
-        self.connected = True
         self.on_connect()
         print("Connected")
         if not self.tx_queue.empty():
@@ -132,11 +155,12 @@ class TCPClient(TCPConnection):
             while not self.tx_queue.empty():
                 self.tx_queue.get_nowait()
 
-        # futures = [self.receive_loop(reader), self.transmit_loop(), self.application_loop()]
-        futures = [self.receive_loop(reader), self.transmit_loop()]
-        _, pending = await asyncio.wait(
-            futures, return_when=asyncio.FIRST_COMPLETED
-        )
+        futures = [
+            self.receive_loop(reader),
+            self.transmit_loop(),
+            # self.application_loop(),
+        ]
+        _, pending = await asyncio.wait(futures, return_when=asyncio.FIRST_COMPLETED)
         for fut in pending:
             fut.cancel()
 
@@ -148,16 +172,20 @@ class TCPClient(TCPConnection):
 class TCPServer(TCPConnection):
     """ Manages a TCP connection from a client """
 
-    def __init__(self, ip_address: str, port: int, loop: Optional[asyncio.AbstractEventLoop]=None) -> None:
-        TCPConnection.__init__(self, loop=loop)
+    def __init__(self, ip_address: str, port: int) -> None:
+        TCPConnection.__init__(self)
         self.ip_address = ip_address
         self.port = port
 
     def serve(self) -> None:
         server_coro = asyncio.start_server(
-            self.handle_single_session, self.ip_address, self.port, loop=self.event_loop
+            self.handle_single_session,
+            self.ip_address,
+            self.port,
+            loop=self.comms_event_loop,
         )
-        self.event_loop.create_task(server_coro)
+        # self.comms_event_loop.create_task(server_coro)
+        asyncio.run_coroutine_threadsafe(server_coro, self.comms_event_loop)
 
     async def handle_single_session(
         self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
@@ -170,21 +198,21 @@ class TCPServer(TCPConnection):
         if self.connected:
             raise Exception("Already Connected")
         else:
-            self.connected = True
+            self.on_connect()
             self.writer = writer
+
+        # TODO: this is quite similar to handle_single_connection in TCPClient
 
         futures = [
             self.receive_loop(reader),
             self.transmit_loop(),
-            self.application_loop(),
+            # self.application_loop(),
         ]
-        _, pending = await asyncio.wait(
-            futures, return_when=asyncio.FIRST_COMPLETED
-        )
+        _, pending = await asyncio.wait(futures, return_when=asyncio.FIRST_COMPLETED)
         for fut in pending:
             fut.cancel()
 
         print("Server: Closed connection")
-        self.connected = False
+        self.on_disconnect()
         self.writer = None
         writer.close()
