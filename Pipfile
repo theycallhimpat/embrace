@@ -12,7 +12,7 @@ pytest-cov = "*"
 pytest-profiling = "*"
 snakeviz = "*"
 pre-commit = "*"
-black = "==19.3b0"
+black = "==19.10b0"
 pylint = "*"
 v = {editable = true,version = "*"}
 
