@@ -4,7 +4,7 @@
 import asyncio
 from typing import Tuple, Optional
 
-from embrace import endpoint
+from embrace import endpoint, eventhandler
 from embrace.messagehandler import Message
 
 
@@ -30,16 +30,18 @@ class UDPConnection(endpoint.EndPoint, asyncio.BaseProtocol):
         """ TODO """
         while True:
             await asyncio.sleep(2.0)
-            await self.enqueue_message(Message(b"TEST"))
+            self.enqueue_message(Message(b"TEST"))
 
     def connection_made(self, transport: asyncio.BaseTransport) -> None:
         """ called when the connection is established.
         Note: required for create_datagram_endpoint """
         self.transport = transport  # type: ignore
 
-    async def enqueue_message(self, message: Message) -> None:
+    def enqueue_message(self, message: Message) -> None:
         """ Add a message to the transmit queue."""
-        await self.tx_queue.put(message)
+        asyncio.run_coroutine_threadsafe(
+            self.tx_queue.put(message), self.comms_event_loop
+        )
         print("Queuing: {}".format(message.data.hex()))
 
     async def transmit_loop(self) -> None:
@@ -56,6 +58,7 @@ class UDPConnection(endpoint.EndPoint, asyncio.BaseProtocol):
                 print(self.remote_addr, "TX: {}".format(message.data.hex()))
                 try:
                     self.transport.sendto(message.data)
+                    self.on_message_transmit(message)
                 except Exception as ex:
                     print(self.remote_addr, "***** failed to send msg: {}".format(ex))
 
@@ -63,8 +66,7 @@ class UDPConnection(endpoint.EndPoint, asyncio.BaseProtocol):
         """ called when a UDP message is received.
         Note: required for create_datagram_endpoint """
         print(addr, "RX: {}".format(data.hex()))
-        # TODO: integrate into EventHandler
-        self.comms_event_loop.create_task(self.rx_queue.put(Message(data)))
+        self.on_bytes_receive(data)
 
     def error_received(self, exc: Exception) -> None:
         """ called when an error occurs
@@ -76,3 +78,9 @@ class UDPConnection(endpoint.EndPoint, asyncio.BaseProtocol):
         Note: required for create_datagram_endpoint """
         # pylint: disable=unused-argument
         self.transport = None
+
+    def on_bytes_receive(self, data: bytes) -> None:
+        self.add_event_threadsafe(eventhandler.ReceiveEvent(data))
+
+    def on_message_transmit(self, message: Message) -> None:
+        pass
